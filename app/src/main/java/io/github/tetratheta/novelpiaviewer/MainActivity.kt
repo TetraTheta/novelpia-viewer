@@ -5,10 +5,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
-import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -22,23 +22,36 @@ import androidx.core.content.edit
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.preference.PreferenceManager
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.google.android.material.progressindicator.LinearProgressIndicator
 
 class MainActivity : AppCompatActivity() {
   private lateinit var errorView: LinearLayout
   private lateinit var progressBar: LinearProgressIndicator
   private lateinit var retryButton: Button
-  private lateinit var swipeRefresh: SwipeRefreshLayout
+  private lateinit var swipeRefresh: TopSwipeRefreshLayout
   private lateinit var webView: WebView
-  private var lastBackPress = 0L
   private val scrollPositions = LinkedHashMap<String, Int>(16, 0.75f, true)
+  private val supportsDocumentStartScript = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+  private var lastBackPress = 0L
+  private var restoringFromViewer = false
 
   companion object {
     private const val MAX_SCROLL_CACHE_SIZE = 50
+    private const val VIEWER_URL_PART = "novelpia.com/viewer/"
   }
 
-  @SuppressLint("SetJavaScriptEnabled")
+  inner class ScrollRestoreInterface {
+    @JavascriptInterface
+    fun getScrollY(url: String): Int {
+      if (!restoringFromViewer) return 0
+      restoringFromViewer = false
+      return scrollPositions[url] ?: 0
+    }
+  }
+
+  @SuppressLint("SetJavaScriptEnabled", "RequiresFeature")
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
@@ -59,6 +72,23 @@ class MainActivity : AppCompatActivity() {
     webView.settings.apply {
       javaScriptEnabled = true
       domStorageEnabled = true
+    }
+
+    webView.addJavascriptInterface(ScrollRestoreInterface(), "_ScrollRestore")
+
+    if (supportsDocumentStartScript) {
+      WebViewCompat.addDocumentStartJavaScript(
+        webView, """
+        (function () {
+          var y = window._ScrollRestore ? window._ScrollRestore.getScrollY(location.href) : 0;
+          if (y > 0) {
+            document.addEventListener('DOMContentLoaded', function () {
+              window.scrollTo(0, y);
+            }, { once: true });
+          }
+        })();
+      """.trimIndent(), setOf("*")
+      )
     }
 
     webView.webChromeClient = object : WebChromeClient() {
@@ -89,7 +119,10 @@ class MainActivity : AppCompatActivity() {
         errorView.visibility = View.GONE
         swipeRefresh.visibility = View.VISIBLE
 
-        url?.let { scrollPositions[it]?.let { y -> view.scrollTo(0, y) } }
+        if (!supportsDocumentStartScript && restoringFromViewer) {
+          restoringFromViewer = false
+          url?.let { scrollPositions[it]?.let { y -> view.scrollTo(0, y) } }
+        }
       }
 
       override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -111,7 +144,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     webView.setOnLongClickListener {
-      AlertDialog.Builder(this).setItems(arrayOf("설정")) { _, which ->
+      AlertDialog.Builder(this).setItems(arrayOf(getString(R.string.menu_settings))) { _, which ->
         if (which == 0) startActivity(Intent(this, SettingsActivity::class.java))
       }.show()
       true
@@ -127,6 +160,9 @@ class MainActivity : AppCompatActivity() {
     onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
       override fun handleOnBackPressed() {
         if (webView.canGoBack()) {
+          if (webView.url?.contains(VIEWER_URL_PART) == true) {
+            restoringFromViewer = true
+          }
           saveScrollPosition()
           webView.goBack()
           return
@@ -144,7 +180,7 @@ class MainActivity : AppCompatActivity() {
 
   override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
     val url = webView.url ?: ""
-    if (url.contains(Regex("novelpia\\.com/viewer/"))) {
+    if (url.contains(VIEWER_URL_PART)) {
       val prefs = PreferenceManager.getDefaultSharedPreferences(this)
       if (prefs.getString("volume_behavior", "move_page") == "move_page") {
         val upPrev = prefs.getString("volume_direction", "up_prev") == "up_prev"
@@ -175,9 +211,10 @@ class MainActivity : AppCompatActivity() {
   override fun onResume() {
     super.onResume()
     val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-    if (prefs.getBoolean("pending_clear_cache", false)) {
+    swipeRefresh.triggerFraction =
+      prefs.getString("swipe_fraction", null)?.toFloatOrNull() ?: TopSwipeRefreshLayout.DEFAULT_TRIGGER_FRACTION
+    if (prefs.getBoolean("pending_clear_cache", false)) { // Clear cache
       webView.clearCache(true)
-      WebStorage.getInstance().deleteAllData()
       prefs.edit { putBoolean("pending_clear_cache", false) }
     }
   }
@@ -189,12 +226,11 @@ class MainActivity : AppCompatActivity() {
 
   private fun saveScrollPosition() {
     val url = webView.url ?: return
+    if (url.contains(VIEWER_URL_PART)) return
     val scrollY = webView.scrollY
-    if (scrollY > 0) {
-      if (scrollPositions.size >= MAX_SCROLL_CACHE_SIZE) {
-        scrollPositions.remove(scrollPositions.keys.first())
-      }
-      scrollPositions[url] = scrollY
+    if (scrollPositions.size >= MAX_SCROLL_CACHE_SIZE && !scrollPositions.containsKey(url)) {
+      scrollPositions.remove(scrollPositions.keys.first())
     }
+    scrollPositions[url] = scrollY
   }
 }

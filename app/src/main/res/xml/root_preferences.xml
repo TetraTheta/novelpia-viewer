@@ -1,25 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.preference.PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
-  <ListPreference
-      app:key="volume_behavior"
-      app:title="@string/pref_key_volume_behavior"
-      app:entries="@array/volume_behavior_entries"
-      app:entryValues="@array/volume_behavior_values"
-      app:defaultValue="move_page"
-      app:useSimpleSummaryProvider="true" />
-  <ListPreference
-      app:key="volume_direction"
-      app:title="@string/pref_key_volume_direction"
-      app:entries="@array/volume_direction_entries"
-      app:entryValues="@array/volume_direction_values"
-      app:defaultValue="up_prev"
-      app:useSimpleSummaryProvider="true" />
-  <Preference
-      app:key="clear_cache"
-      app:title="@string/pref_key_clear_cache"
-      app:summary="@string/pref_desc_clear_cache" />
-  <Preference
-      app:key="clear_cookie"
-      app:title="@string/pref_key_clear_cookie"
-      app:summary="@string/pref_desc_clear_cookie" />
+  <PreferenceCategory app:title="@string/pref_category_viewer">
+    <ListPreference
+        app:key="volume_behavior"
+        app:title="@string/pref_key_volume_behavior"
+        app:entries="@array/volume_behavior_entries"
+        app:entryValues="@array/volume_behavior_values"
+        app:defaultValue="move_page"
+        app:useSimpleSummaryProvider="true" />
+    <ListPreference
+        app:key="volume_direction"
+        app:title="@string/pref_key_volume_direction"
+        app:entries="@array/volume_direction_entries"
+        app:entryValues="@array/volume_direction_values"
+        app:defaultValue="up_prev"
+        app:useSimpleSummaryProvider="true" />
+    <ListPreference
+        app:key="swipe_fraction"
+        app:title="@string/pref_key_swipe_fraction"
+        app:summary="@string/pref_desc_swipe_fraction"
+        app:entries="@array/swipe_fraction_entries"
+        app:entryValues="@array/swipe_fraction_values"
+        app:defaultValue="0.15"
+        app:useSimpleSummaryProvider="true" />
+  </PreferenceCategory>
+  <PreferenceCategory app:title="@string/pref_category_data">
+    <Preference
+        app:key="clear_cache"
+        app:title="@string/pref_key_clear_cache"
+        app:summary="@string/pref_desc_clear_cache" />
+    <Preference
+        app:key="clear_webstorage"
+        app:title="@string/pref_key_clear_webstorage"
+        app:summary="@string/pref_desc_clear_webstorage" />
+    <Preference
+        app:key="clear_cookie"
+        app:title="@string/pref_key_clear_cookie"
+        app:summary="@string/pref_desc_clear_cookie" />
+  </PreferenceCategory>
 </androidx.preference.PreferenceScreen>

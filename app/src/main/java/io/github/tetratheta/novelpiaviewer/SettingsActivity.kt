@@ -2,6 +2,7 @@ package io.github.tetratheta.novelpiaviewer
 
 import android.os.Bundle
 import android.webkit.CookieManager
+import android.webkit.WebStorage
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -33,6 +34,12 @@ class SettingsActivity : AppCompatActivity() {
       findPreference<Preference>("clear_cache")?.setOnPreferenceClickListener {
         PreferenceManager.getDefaultSharedPreferences(requireContext()).edit { putBoolean("pending_clear_cache", true) }
         Toast.makeText(context, R.string.msg_clear_cache, Toast.LENGTH_SHORT).show()
+        true
+      }
+
+      findPreference<Preference>("clear_webstorage")?.setOnPreferenceClickListener {
+        WebStorage.getInstance().deleteAllData()
+        Toast.makeText(context, R.string.msg_clear_webstorage, Toast.LENGTH_SHORT).show()
         true
       }
 

@@ -15,7 +15,7 @@ android {
     minSdk = 31
     targetSdk = 36
     versionCode = 1
-    versionName = "1.3.0"
+    versionName = "1.4.0"
   }
 
   buildTypes {
@@ -37,8 +37,9 @@ dependencies {
   implementation(libs.androidx.appcompat)
   implementation(libs.androidx.constraintlayout)
   implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.preference)
   implementation(libs.androidx.preference.ktx)
   implementation(libs.androidx.swiperefreshlayout)
+  implementation(libs.androidx.webkit)
   implementation(libs.material)
-  implementation(libs.androidx.preference)
 }
