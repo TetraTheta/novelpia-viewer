@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string-array name="volume_behavior_entries">
+    <item>Move Page</item>
+    <item>Disable</item>
+  </string-array>
+  <string-array name="volume_behavior_values">
+    <item>move_page</item>
+    <item>disable</item>
+  </string-array>
+  <string-array name="volume_direction_entries">
+    <item>Up: Previous page / Down: Next page</item>
+    <item>Up: Next page / Down: Previous page</item>
+  </string-array>
+  <string-array name="volume_direction_values">
+    <item>up_prev</item>
+    <item>up_next</item>
+  </string-array>
+</resources>
