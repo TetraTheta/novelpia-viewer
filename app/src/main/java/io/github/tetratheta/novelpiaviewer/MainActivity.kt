@@ -18,7 +18,6 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.edit
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.preference.PreferenceManager
@@ -213,10 +212,6 @@ class MainActivity : AppCompatActivity() {
     val prefs = PreferenceManager.getDefaultSharedPreferences(this)
     swipeRefresh.triggerFraction =
       prefs.getString("swipe_fraction", null)?.toFloatOrNull() ?: TopSwipeRefreshLayout.DEFAULT_TRIGGER_FRACTION
-    if (prefs.getBoolean("pending_clear_cache", false)) { // Clear cache
-      webView.clearCache(true)
-      prefs.edit { putBoolean("pending_clear_cache", false) }
-    }
   }
 
   override fun onSaveInstanceState(outState: Bundle) {
