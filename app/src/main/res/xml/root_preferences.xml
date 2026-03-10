@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.preference.PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+  <PreferenceCategory app:title="@string/pref_category_system">
+    <Preference
+        app:key="open_link_settings"
+        app:title="@string/pref_key_open_link_settings"
+        app:summary="@string/pref_desc_open_link_settings_disabled" />
+  </PreferenceCategory>
   <PreferenceCategory app:title="@string/pref_category_viewer">
     <ListPreference
         app:key="volume_behavior"

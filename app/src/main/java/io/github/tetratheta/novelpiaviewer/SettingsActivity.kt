@@ -1,11 +1,16 @@
 package io.github.tetratheta.novelpiaviewer
 
+import android.content.Intent
+import android.content.pm.verify.domain.DomainVerificationManager
+import android.content.pm.verify.domain.DomainVerificationUserState
 import android.os.Bundle
+import android.provider.Settings
 import android.webkit.CookieManager
 import android.webkit.WebStorage
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
@@ -36,6 +41,13 @@ class SettingsActivity : AppCompatActivity() {
   class SettingsFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
       setPreferencesFromResource(R.xml.root_preferences, rootKey)
+
+      findPreference<Preference>("open_link_settings")?.setOnPreferenceClickListener {
+        val intent =
+          Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, "package:${requireContext().packageName}".toUri())
+        startActivity(intent)
+        true
+      }
 
       findPreference<Preference>("clear_cache")?.setOnPreferenceClickListener {
         lifecycleScope.launch {
@@ -70,7 +82,18 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
       super.onResume()
+      updateLinkSettingsPref()
       lifecycleScope.launch { updateStorageSummaries() }
+    }
+
+    private fun updateLinkSettingsPref() {
+      val pref = findPreference<Preference>("open_link_settings") ?: return
+      val approved = isLinkApproved()
+      pref.isEnabled = !approved
+      pref.summary = getString(
+        if (approved) R.string.pref_desc_open_link_settings_enabled
+        else R.string.pref_desc_open_link_settings_disabled
+      )
     }
 
     private suspend fun updateStorageSummaries() {
@@ -114,6 +137,17 @@ class SettingsActivity : AppCompatActivity() {
       bytes < 1_024L -> "$bytes B"
       bytes < 1_048_576L -> "${bytes / 1_024} KB"
       else -> "%.1f MB".format(bytes / 1_048_576.0)
+    }
+
+    private fun isLinkApproved(): Boolean {
+      return try {
+        val manager = requireContext().getSystemService(DomainVerificationManager::class.java)
+        val userState = manager.getDomainVerificationUserState(requireContext().packageName) ?: return false
+        val state = userState.hostToStateMap["novelpia.com"] ?: return false
+        state == DomainVerificationUserState.DOMAIN_STATE_SELECTED || state == DomainVerificationUserState.DOMAIN_STATE_VERIFIED
+      } catch (_: Exception) {
+        false
+      }
     }
   }
 }
