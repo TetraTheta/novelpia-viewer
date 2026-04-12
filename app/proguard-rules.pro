@@ -1,5 +1,8 @@
 # WebView JavaScript Interface
--keepclassmembers class io.github.tetratheta.npviewer.MainActivity$ScrollRestoreInterface {
+-keepclassmembers class io.github.tetratheta.npviewer.activity.MainActivity$ScrollRestoreInterface {
+  @android.webkit.JavascriptInterface <methods>;
+}
+-keepclassmembers class io.github.tetratheta.npviewer.activity.MainActivity$FilterCssInterface {
   @android.webkit.JavascriptInterface <methods>;
 }
 # Preferences

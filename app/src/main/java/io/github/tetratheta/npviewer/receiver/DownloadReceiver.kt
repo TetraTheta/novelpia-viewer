@@ -58,8 +58,7 @@ class DownloadReceiver : BroadcastReceiver() {
 
   private fun handleFailure(context: Context) {
     val cachedInfo = UpdateChecker.getCachedInfo(context)
-    val downloadUrl = UpdateChecker.prefs(context).getString(UpdateChecker.KEY_PENDING_URL, null)
-      ?: cachedInfo?.downloadUrl
+    val downloadUrl = UpdateChecker.prefs(context).getString(UpdateChecker.KEY_PENDING_URL, null) ?: cachedInfo?.downloadUrl
     val version = cachedInfo?.version
     if (downloadUrl != null && version != null) {
       UpdateNotifier.showDownloadFailed(context, downloadUrl, version)

@@ -5,10 +5,7 @@ import android.content.Context
 import android.content.Intent
 import io.github.tetratheta.npviewer.update.UpdateChecker
 
-/**
- * "업데이트 가능" 알림 탭 또는 "다운로드 실패" 재시도 알림 탭을 처리하여
- * DownloadManager를 통한 다운로드를 시작하는 리시버.
- */
+/** 업데이트 알림 액션 버튼을 처리하여 DownloadManager 다운로드를 시작하는 리시버. */
 class UpdateDownloadReceiver : BroadcastReceiver() {
   companion object {
     const val EXTRA_DOWNLOAD_URL = "extra_download_url"

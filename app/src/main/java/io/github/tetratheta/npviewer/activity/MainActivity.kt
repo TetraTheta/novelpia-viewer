@@ -9,6 +9,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -26,10 +27,14 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import io.github.tetratheta.npviewer.R
+import io.github.tetratheta.npviewer.filter.FilterPreferences
+import io.github.tetratheta.npviewer.filter.FilterRuntime
 import io.github.tetratheta.npviewer.layout.TopSwipeRefreshLayout
 import io.github.tetratheta.npviewer.update.UpdateChecker
 import io.github.tetratheta.npviewer.update.UpdateNotifier
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
   private lateinit var errorView: LinearLayout
@@ -37,8 +42,10 @@ class MainActivity : AppCompatActivity() {
   private lateinit var retryButton: Button
   private lateinit var swipeRefresh: TopSwipeRefreshLayout
   private lateinit var webView: WebView
+  private lateinit var filterRuntime: FilterRuntime
+  private val injectedScriptBundle by lazy { loadAssetText("webview-injected.bundle.js") }
 
-  /** 페이지별 스크롤 위치 캐시 (Least Recentely Used 방식) */
+  /** 페이지별 스크롤 위치 캐시 (Least Recently Used 방식) */
   private val scrollPositions = LinkedHashMap<String, Int>(16, 0.75f, true)
 
   /** DocumentStartScript API 지원 여부 */
@@ -51,13 +58,24 @@ class MainActivity : AppCompatActivity() {
     private const val VIEWER_URL_PART = "novelpia.com/viewer/"
   }
 
-  /** JS에서 호출하여 이전 스크롤 위치를 복원하는 인터페이스 */
+  /** 페이지 진입 시 JS에서 이전 스크롤 위치를 조회하는 인터페이스 */
   inner class ScrollRestoreInterface {
+    @Suppress("unused")
     @JavascriptInterface
     fun getScrollY(url: String): Int {
       if (!restoringFromViewer) return 0
       restoringFromViewer = false
       return scrollPositions[url] ?: 0
+    }
+  }
+
+  /** 문서 시작 스크립트가 cosmetic CSS/selector payload를 가져갈 때 사용하는 인터페이스 */
+  inner class FilterCssInterface {
+    @Suppress("unused")
+    @JavascriptInterface
+    fun getCosmetic(url: String): String {
+      val cosmetic = filterRuntime.getCosmeticForUrl(url)
+      return org.json.JSONObject().put("css", cosmetic.css).put("selectors", org.json.JSONArray(cosmetic.selectors)).toString()
     }
   }
 
@@ -68,10 +86,12 @@ class MainActivity : AppCompatActivity() {
     setContentView(R.layout.activity_main)
 
     bindViews()
+    filterRuntime = FilterRuntime.getInstance(this)
     setupEdgeToEdge()
     setupWebView()
     setupListeners()
     setupUpdate()
+    setupFilters()
 
     if (savedInstanceState != null) {
       webView.restoreState(savedInstanceState)
@@ -108,21 +128,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     webView.addJavascriptInterface(ScrollRestoreInterface(), "_ScrollRestore")
+    webView.addJavascriptInterface(FilterCssInterface(), "_AdFilter")
 
-    // DOMContentLoaded에서 스크롤 복원 (DocumentStartScript 지원 시)
+    // DocumentStartScript 지원 시, 초기 스크롤 복원과 cosmetic 필터를 함께 적용한다.
     if (supportsDocumentStartScript) {
-      WebViewCompat.addDocumentStartJavaScript(
-        webView, """
-        (function () {
-          var y = window._ScrollRestore ? window._ScrollRestore.getScrollY(location.href) : 0;
-          if (y > 0) {
-            document.addEventListener('DOMContentLoaded', function () {
-              window.scrollTo(0, y);
-            }, { once: true });
-          }
-        })();
-        """.trimIndent(), setOf("*")
-      )
+      WebViewCompat.addDocumentStartJavaScript(webView, injectedScriptBundle, setOf("*"))
     }
 
     webView.webChromeClient = object : WebChromeClient() {
@@ -133,13 +143,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     webView.webViewClient = object : WebViewClient() {
+      override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+        if (request.isForMainFrame) {
+          filterRuntime.preparePage(request.url.toString(), request.requestHeaders["Referer"])
+        }
+        return filterRuntime.maybeBlock(request)
+      }
+
       override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val host = request.url.host ?: return false
         if (host.endsWith("novelpia.com")) {
           saveScrollPosition()
           return false
-        }
-        // 외부 링크는 기본 브라우저로
+        } // 외부 링크는 기본 브라우저로
         startActivity(Intent(Intent.ACTION_VIEW, request.url))
         return true
       }
@@ -149,10 +165,19 @@ class MainActivity : AppCompatActivity() {
         errorView.visibility = View.GONE
         swipeRefresh.visibility = View.VISIBLE
 
-        // DocumentStartScript 미지원 시 fallback 스크롤 복원
-        if (!supportsDocumentStartScript && restoringFromViewer) {
-          restoringFromViewer = false
-          url?.let { scrollPositions[it]?.let { y -> view.scrollTo(0, y) } }
+        if (url != null) {
+          lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+              filterRuntime.preparePage(url, null)
+            }
+            if (view.url == url) {
+              if (supportsDocumentStartScript) {
+                refreshCosmeticFilters(view)
+              } else { // DocumentStartScript 미지원 환경은 페이지 완료 후 스크립트 번들을 주입한다.
+                injectWebViewScript(view)
+              }
+            }
+          }
         }
       }
 
@@ -192,6 +217,19 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
+  private fun setupFilters() {
+    lifecycleScope.launch {
+      runCatching {
+        withContext(Dispatchers.IO) {
+          if (FilterPreferences.shouldRefresh(applicationContext)) {
+            filterRuntime.updateSubscriptions()
+          }
+          filterRuntime.refreshEngine()
+        }
+      }
+    }
+  }
+
   private fun setupBackHandler() {
     onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
       override fun handleOnBackPressed() {
@@ -221,8 +259,7 @@ class MainActivity : AppCompatActivity() {
     if (url.contains(VIEWER_URL_PART)) {
       val prefs = PreferenceManager.getDefaultSharedPreferences(this)
       if (prefs.getString("volume_behavior", "move_page") == "move_page") {
-        val upPrev = prefs.getString("volume_direction", "up_prev") == "up_prev"
-        // 볼륨 업/다운에 따라 이전/다음 페이지 클릭
+        val upPrev = prefs.getString("volume_direction", "up_prev") == "up_prev" // 볼륨 업/다운에 따라 이전/다음 페이지 클릭
         val selector = when (keyCode) {
           KeyEvent.KEYCODE_VOLUME_UP -> if (upPrev) "#novel_drawing_left" else "#novel_drawing_right"
           KeyEvent.KEYCODE_VOLUME_DOWN -> if (upPrev) "#novel_drawing_right" else "#novel_drawing_left"
@@ -260,5 +297,18 @@ class MainActivity : AppCompatActivity() {
       scrollPositions.remove(scrollPositions.keys.first())
     }
     scrollPositions[url] = webView.scrollY
+  }
+
+  private fun injectWebViewScript(view: WebView) {
+    view.evaluateJavascript(injectedScriptBundle, null)
+  }
+
+  private fun refreshCosmeticFilters(view: WebView) {
+    view.evaluateJavascript("window.__npviewerRefreshCosmetic&&window.__npviewerRefreshCosmetic();", null)
+  }
+
+  @Suppress("SameParameterValue")
+  private fun loadAssetText(assetName: String): String {
+    return assets.open(assetName).bufferedReader().use { it.readText() }
   }
 }

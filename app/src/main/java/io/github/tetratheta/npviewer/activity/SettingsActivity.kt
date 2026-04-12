@@ -8,8 +8,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.webkit.CookieManager
 import android.webkit.WebStorage
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -21,6 +24,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import io.github.tetratheta.npviewer.R
+import io.github.tetratheta.npviewer.filter.FilterPreferences
+import io.github.tetratheta.npviewer.filter.FilterRuntime
 import io.github.tetratheta.npviewer.update.UpdateChecker
 import io.github.tetratheta.npviewer.update.UpdateInfo
 import io.github.tetratheta.npviewer.update.UpdateResult
@@ -54,19 +59,18 @@ class SettingsActivity : AppCompatActivity() {
       private const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
     }
 
-    private val notificationPermissionLauncher =
-      registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!isAdded) return@registerForActivityResult
-        if (!granted) {
-          if (!shouldShowRequestPermissionRationale(POST_NOTIFICATIONS)) {
-            showGoToSettingsDialog()
-          } else {
-            Toast.makeText(requireContext(), R.string.msg_notification_permission_denied, Toast.LENGTH_LONG).show()
-          }
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      if (!isAdded) return@registerForActivityResult
+      if (!granted) {
+        if (!shouldShowRequestPermissionRationale(POST_NOTIFICATIONS)) {
+          showGoToSettingsDialog()
+        } else {
+          Toast.makeText(requireContext(), R.string.msg_notification_permission_denied, Toast.LENGTH_LONG).show()
         }
-        pendingPermissionAction?.invoke()
-        pendingPermissionAction = null
       }
+      pendingPermissionAction?.invoke()
+      pendingPermissionAction = null
+    }
 
     private var pendingUpdateInfo: UpdateInfo? = null
     private var pendingPermissionAction: (() -> Unit)? = null
@@ -76,6 +80,7 @@ class SettingsActivity : AppCompatActivity() {
       setupVersionPref()
       setupLinkSettingsPref()
       setupUpdatePrefs()
+      setupFilterPrefs()
       setupDataPrefs()
     }
 
@@ -85,6 +90,7 @@ class SettingsActivity : AppCompatActivity() {
       lifecycleScope.launch {
         refreshStorageSummaries()
         refreshUpdatePrefs()
+        refreshFilterPrefs()
       }
     }
 
@@ -137,17 +143,85 @@ class SettingsActivity : AppCompatActivity() {
       }
 
       findPreference<Preference>("clear_cookie")?.setOnPreferenceClickListener {
-        AlertDialog.Builder(requireContext())
-          .setTitle(R.string.title_clear_cookie)
-          .setMessage(R.string.msg_clear_cookie_warning)
+        AlertDialog.Builder(requireContext()).setTitle(R.string.title_clear_cookie).setMessage(R.string.msg_clear_cookie_warning)
           .setPositiveButton(R.string.btn_delete) { _, _ ->
             CookieManager.getInstance().apply { removeAllCookies(null); flush() }
             Toast.makeText(context, R.string.msg_clear_cookie, Toast.LENGTH_SHORT).show()
-            findPreference<Preference>("clear_cookie")?.summary =
-              "${getString(R.string.pref_desc_clear_cookie)}\n0 B"
+            findPreference<Preference>("clear_cookie")?.summary = "${getString(R.string.pref_desc_clear_cookie)}\n0 B"
+          }.setNegativeButton(R.string.btn_cancel, null).show()
+        true
+      }
+    }
+
+    private fun setupFilterPrefs() {
+      findPreference<Preference>(FilterPreferences.KEY_ENABLED)?.setOnPreferenceChangeListener { _, _ ->
+        lifecycleScope.launch {
+          withContext(Dispatchers.IO) {
+            FilterRuntime.getInstance(requireContext()).refreshEngine(force = true)
           }
-          .setNegativeButton(R.string.btn_cancel, null)
-          .show()
+          refreshFilterPrefs()
+        }
+        true
+      }
+
+      findPreference<Preference>(FilterPreferences.KEY_SUBSCRIPTIONS)?.setOnPreferenceClickListener {
+        showMultilineEditor(
+          title = getString(R.string.title_filters_subscriptions),
+          initialValue = FilterPreferences.prefs(requireContext())
+            .getString(FilterPreferences.KEY_SUBSCRIPTIONS, FilterPreferences.DEFAULT_SUBSCRIPTIONS).orEmpty()
+        ) { value ->
+          FilterPreferences.prefs(requireContext()).edit {
+            putString(FilterPreferences.KEY_SUBSCRIPTIONS, value.trim())
+          }
+          lifecycleScope.launch {
+            runCatching {
+              withContext(Dispatchers.IO) {
+                FilterRuntime.getInstance(requireContext()).updateSubscriptions(force = true)
+                FilterRuntime.getInstance(requireContext()).refreshEngine(force = true)
+              }
+            }
+            refreshFilterPrefs()
+          }
+          Toast.makeText(requireContext(), R.string.msg_filters_saved, Toast.LENGTH_SHORT).show()
+        }
+        true
+      }
+
+      findPreference<Preference>(FilterPreferences.KEY_USER_RULES)?.setOnPreferenceClickListener {
+        showMultilineEditor(
+          title = getString(R.string.title_filters_user_rules), initialValue = FilterPreferences.getUserRules(requireContext())
+        ) { value ->
+          FilterPreferences.prefs(requireContext()).edit {
+            putString(FilterPreferences.KEY_USER_RULES, value.trim())
+          }
+          lifecycleScope.launch {
+            runCatching {
+              withContext(Dispatchers.IO) {
+                FilterRuntime.getInstance(requireContext()).refreshEngine(force = true)
+              }
+            }
+            refreshFilterPrefs()
+          }
+          Toast.makeText(requireContext(), R.string.msg_filters_saved, Toast.LENGTH_SHORT).show()
+        }
+        true
+      }
+
+      findPreference<Preference>("filters_update_now")?.setOnPreferenceClickListener {
+        lifecycleScope.launch {
+          val summary = withContext(Dispatchers.IO) {
+            FilterRuntime.getInstance(requireContext()).updateSubscriptions(force = true)
+          }
+          runCatching {
+            withContext(Dispatchers.IO) {
+              FilterRuntime.getInstance(requireContext()).refreshEngine(force = true)
+            }
+          }
+          refreshFilterPrefs()
+          Toast.makeText(
+            requireContext(), if (summary.failedCount == 0) R.string.msg_filters_updated else R.string.msg_filters_update_failed, Toast.LENGTH_SHORT
+          ).show()
+        }
         true
       }
     }
@@ -282,8 +356,9 @@ class SettingsActivity : AppCompatActivity() {
 
     /** POST_NOTIFICATIONS 권한을 확인하고 필요 시 요청한 후 [action] 실행 */
     private fun requestNotificationPermissionThen(action: () -> Unit) {
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        ContextCompat.checkSelfPermission(requireContext(), POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || ContextCompat.checkSelfPermission(
+          requireContext(), POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
       ) {
         action()
         return
@@ -293,30 +368,22 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun showNotificationRationaleDialog() {
-      AlertDialog.Builder(requireContext())
-        .setTitle(R.string.dlg_notification_permission_title)
-        .setMessage(R.string.dlg_notification_permission_message)
-        .setPositiveButton(R.string.btn_allow) { _, _ ->
+      AlertDialog.Builder(requireContext()).setTitle(R.string.dlg_notification_permission_title)
+        .setMessage(R.string.dlg_notification_permission_message).setPositiveButton(R.string.btn_allow) { _, _ ->
           notificationPermissionLauncher.launch(POST_NOTIFICATIONS)
-        }
-        .setNegativeButton(R.string.btn_skip) { _, _ ->
+        }.setNegativeButton(R.string.btn_skip) { _, _ ->
           pendingPermissionAction?.invoke()
           pendingPermissionAction = null
-        }
-        .show()
+        }.show()
     }
 
     private fun showGoToSettingsDialog() {
-      AlertDialog.Builder(requireContext())
-        .setTitle(R.string.dlg_notification_settings_title)
-        .setMessage(R.string.dlg_notification_settings_message)
+      AlertDialog.Builder(requireContext()).setTitle(R.string.dlg_notification_settings_title).setMessage(R.string.dlg_notification_settings_message)
         .setPositiveButton(R.string.btn_go_to_settings) { _, _ ->
           startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", requireContext().packageName, null)
           })
-        }
-        .setNegativeButton(R.string.btn_cancel, null)
-        .show()
+        }.setNegativeButton(R.string.btn_cancel, null).show()
     }
 
     // endregion
@@ -357,8 +424,7 @@ class SettingsActivity : AppCompatActivity() {
       val size = withContext(Dispatchers.IO) {
         requireContext().cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
       }
-      findPreference<Preference>("clear_cache")?.summary =
-        "${getString(R.string.pref_desc_clear_cache)}\n${formatSize(size)}"
+      findPreference<Preference>("clear_cache")?.summary = "${getString(R.string.pref_desc_clear_cache)}\n${formatSize(size)}"
     }
 
     private suspend fun refreshWebStorageSummary() {
@@ -367,8 +433,7 @@ class SettingsActivity : AppCompatActivity() {
           cont.resume(origins?.values?.filterIsInstance<WebStorage.Origin>()?.sumOf { it.usage } ?: 0L)
         }
       }
-      findPreference<Preference>("clear_webstorage")?.summary =
-        "${getString(R.string.pref_desc_clear_webstorage)}\n${formatSize(size)}"
+      findPreference<Preference>("clear_webstorage")?.summary = "${getString(R.string.pref_desc_clear_webstorage)}\n${formatSize(size)}"
     }
 
     private suspend fun refreshCookieSummary() {
@@ -376,8 +441,7 @@ class SettingsActivity : AppCompatActivity() {
         val cookieFile = File(requireContext().dataDir, "app_webview/Default/Cookies")
         if (cookieFile.exists()) cookieFile.length() else 0L
       }
-      findPreference<Preference>("clear_cookie")?.summary =
-        "${getString(R.string.pref_desc_clear_cookie)}\n${formatSize(size)}"
+      findPreference<Preference>("clear_cookie")?.summary = "${getString(R.string.pref_desc_clear_cookie)}\n${formatSize(size)}"
     }
 
     private fun formatSize(bytes: Long): String = when {
@@ -385,6 +449,60 @@ class SettingsActivity : AppCompatActivity() {
       bytes < 1_024L -> "$bytes B"
       bytes < 1_048_576L -> "${bytes / 1_024} KB"
       else -> "%.1f MB".format(bytes / 1_048_576.0)
+    }
+
+    // endregion
+
+    // region 필터
+
+    private fun refreshFilterPrefs() {
+      val context = requireContext()
+      val urls = FilterPreferences.getSubscriptionUrls(context)
+      val userRules = FilterPreferences.getUserRules(context)
+      val lastUpdated = FilterPreferences.getLastUpdatedAt(context)
+      val lastError = FilterPreferences.getLastUpdateError(context)
+
+      findPreference<Preference>(FilterPreferences.KEY_SUBSCRIPTIONS)?.summary = buildString {
+        append(getString(R.string.pref_desc_filters_subscriptions))
+        append("\n")
+        append(if (urls.isEmpty()) "0 URL" else "${urls.size} URL")
+      }
+
+      findPreference<Preference>(FilterPreferences.KEY_USER_RULES)?.summary = buildString {
+        append(getString(R.string.pref_desc_filters_user_rules))
+        append("\n")
+        append(if (userRules.isBlank()) "0 rules" else "${userRules.lineSequence().count { it.isNotBlank() }} rules")
+      }
+
+      findPreference<Preference>("filters_update_now")?.summary = when {
+        lastError != null -> "${getString(R.string.pref_desc_filters_update_now)}\n$lastError"
+        lastUpdated > 0L -> "${getString(R.string.pref_desc_filters_update_now)}\n${
+          java.text.DateFormat.getDateTimeInstance().format(java.util.Date(lastUpdated))
+        }"
+
+        else -> getString(R.string.pref_desc_filters_update_now)
+      }
+    }
+
+    private fun showMultilineEditor(title: String, initialValue: String, onSave: (String) -> Unit) {
+      val editText = EditText(requireContext()).apply {
+        setText(initialValue)
+        minLines = 8
+        gravity = android.view.Gravity.TOP or android.view.Gravity.START
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+      }
+      val container = LinearLayout(requireContext()).apply {
+        val padding = (24 * resources.displayMetrics.density).toInt()
+        setPadding(padding, padding / 2, padding, 0)
+        addView(
+          editText, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+          )
+        )
+      }
+
+      AlertDialog.Builder(requireContext()).setTitle(title).setView(container)
+        .setPositiveButton(android.R.string.ok) { _, _ -> onSave(editText.text.toString()) }.setNegativeButton(R.string.btn_cancel, null).show()
     }
 
     // endregion

@@ -30,6 +30,30 @@
         app:defaultValue="0.15"
         app:useSimpleSummaryProvider="true" />
   </PreferenceCategory>
+  <PreferenceCategory app:title="@string/pref_category_ad_blocking">
+    <SwitchPreferenceCompat
+        app:key="filters_enabled"
+        app:title="@string/pref_key_filters_enabled"
+        app:summary="@string/pref_desc_filters_enabled"
+        app:defaultValue="true" />
+    <SwitchPreferenceCompat
+        app:key="filters_auto_update"
+        app:title="@string/pref_key_filters_auto_update"
+        app:summary="@string/pref_desc_filters_auto_update"
+        app:defaultValue="true" />
+    <Preference
+        app:key="filters_subscriptions"
+        app:title="@string/pref_key_filters_subscriptions"
+        app:summary="@string/pref_desc_filters_subscriptions" />
+    <Preference
+        app:key="filters_user_rules"
+        app:title="@string/pref_key_filters_user_rules"
+        app:summary="@string/pref_desc_filters_user_rules" />
+    <Preference
+        app:key="filters_update_now"
+        app:title="@string/pref_key_filters_update_now"
+        app:summary="@string/pref_desc_filters_update_now" />
+  </PreferenceCategory>
   <PreferenceCategory app:title="@string/pref_category_data">
     <Preference
         app:key="clear_cache"

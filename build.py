@@ -61,7 +61,7 @@ print(f"[INFO] {APP_NAME} v{VERSION} 빌드를 시작합니다.")
 gradlew = PROJECT_ROOT / ("gradlew.bat" if sys.platform == "win32" else "gradlew")
 print(f"\n[STEP 1] assembleRelease 실행: {gradlew}")
 
-result = subprocess.run([str(gradlew), "assembleRelease"], cwd=PROJECT_ROOT)
+result = subprocess.run([str(gradlew), "assembleRelease", "--no-daemon"], cwd=PROJECT_ROOT)
 if result.returncode != 0:
     print("[ERROR] Gradle 빌드에 실패했습니다.", file=sys.stderr)
     sys.exit(result.returncode)

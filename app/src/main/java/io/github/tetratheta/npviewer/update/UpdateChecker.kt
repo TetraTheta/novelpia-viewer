@@ -4,7 +4,6 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import io.github.tetratheta.npviewer.R
@@ -14,6 +13,7 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import androidx.core.net.toUri
 
 /**
  * 앱 업데이트의 확인·캐시·다운로드·설치를 중앙에서 관리하는 객체.
@@ -36,8 +36,7 @@ object UpdateChecker {
   private const val KEY_LAST_VERSION = "last_known_version_name"
   private const val PREFS_NAME = "update_prefs"
 
-  fun prefs(context: Context): SharedPreferences =
-    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+  fun prefs(context: Context): SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
   // region 네트워크
 
@@ -60,15 +59,12 @@ object UpdateChecker {
       conn.disconnect()
 
       val tagName = json.getString("tag_name").removePrefix("v")
-      val currentVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        ?: return@withContext UpdateResult.Error
+      val currentVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: return@withContext UpdateResult.Error
 
       if (!isNewer(tagName, currentVersion)) return@withContext UpdateResult.UpToDate
 
       val downloadUrl = json.getJSONArray("assets").let { assets ->
-        (0 until assets.length())
-          .map { assets.getJSONObject(it) }
-          .firstOrNull { it.getString("name").endsWith(".apk") }
+        (0 until assets.length()).map { assets.getJSONObject(it) }.firstOrNull { it.getString("name").endsWith(".apk") }
           ?.getString("browser_download_url")
       } ?: return@withContext UpdateResult.Error
 
@@ -129,7 +125,7 @@ object UpdateChecker {
 
   /** DownloadManager를 통해 APK 다운로드 시작. 성공 시 다운로드 ID, 실패 시 -1 반환 */
   fun enqueueDownload(context: Context, downloadUrl: String, version: String): Long {
-    val request = DownloadManager.Request(Uri.parse(downloadUrl)).apply {
+    val request = DownloadManager.Request(downloadUrl.toUri()).apply {
       setTitle(context.getString(R.string.noti_download_title))
       setDescription(context.getString(R.string.noti_download_desc, version))
       setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
