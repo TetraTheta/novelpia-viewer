@@ -15,7 +15,6 @@
   <string name="msg_clear_cookie">쿠키가 삭제되었습니다.</string>
   <string name="msg_clear_cookie_warning">모든 쿠키가 삭제되며 노벨피아에서 로그아웃됩니다. 계속하시겠습니까?</string>
   <string name="msg_clear_webstorage">웹 스토리지가 삭제되었습니다.</string>
-  <string name="msg_filter_runtime_unsupported">현재 WebView 버전은 필터 엔진을 지원하지 않습니다.</string>
   <string name="msg_filters_saved">필터 설정이 저장되었습니다.</string>
   <string name="msg_filters_update_failed">필터 업데이트에 실패했습니다.</string>
   <string name="msg_filters_updated">필터를 업데이트했습니다.</string>

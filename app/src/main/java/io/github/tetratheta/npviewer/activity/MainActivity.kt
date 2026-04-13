@@ -43,12 +43,12 @@ class MainActivity : AppCompatActivity() {
   private lateinit var swipeRefresh: TopSwipeRefreshLayout
   private lateinit var webView: WebView
   private lateinit var filterRuntime: FilterRuntime
-  private val injectedScriptBundle by lazy { loadAssetText("webview-injected.bundle.js") }
+  private val documentStartScripts by lazy { loadAssetTexts("ad-filter.js", "scroll-restore.js") }
 
   /** 페이지별 스크롤 위치 캐시 (Least Recently Used 방식) */
   private val scrollPositions = LinkedHashMap<String, Int>(16, 0.75f, true)
 
-  /** DocumentStartScript API 지원 여부 */
+  /** 문서 시작 스크립트 API 지원 여부 */
   private val supportsDocumentStartScript = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
   private var lastBackPress = 0L
   private var restoringFromViewer = false
@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
     private const val VIEWER_URL_PART = "novelpia.com/viewer/"
   }
 
-  /** 페이지 진입 시 JS에서 이전 스크롤 위치를 조회하는 인터페이스 */
+  /** 주입 스크립트가 이전 스크롤 위치를 조회할 때 사용하는 브리지 */
   inner class ScrollRestoreInterface {
     @Suppress("unused")
     @JavascriptInterface
@@ -69,7 +69,7 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  /** 문서 시작 스크립트가 cosmetic CSS/selector payload를 가져갈 때 사용하는 인터페이스 */
+  /** 주입 스크립트가 cosmetic payload를 가져갈 때 사용하는 브리지 */
   inner class FilterCssInterface {
     @Suppress("unused")
     @JavascriptInterface
@@ -102,7 +102,7 @@ class MainActivity : AppCompatActivity() {
     setupBackHandler()
   }
 
-  // region 초기화
+  // region 설정
 
   private fun bindViews() {
     errorView = findViewById(R.id.error_view)
@@ -130,9 +130,11 @@ class MainActivity : AppCompatActivity() {
     webView.addJavascriptInterface(ScrollRestoreInterface(), "_ScrollRestore")
     webView.addJavascriptInterface(FilterCssInterface(), "_AdFilter")
 
-    // DocumentStartScript 지원 시, 초기 스크롤 복원과 cosmetic 필터를 함께 적용한다.
+    // 문서 시작 스크립트를 지원하면 스크롤 복원과 cosmetic 적용 스크립트를 조기에 등록한다.
     if (supportsDocumentStartScript) {
-      WebViewCompat.addDocumentStartJavaScript(webView, injectedScriptBundle, setOf("*"))
+      documentStartScripts.forEach { script ->
+        WebViewCompat.addDocumentStartJavaScript(webView, script, setOf("*"))
+      }
     }
 
     webView.webChromeClient = object : WebChromeClient() {
@@ -145,7 +147,7 @@ class MainActivity : AppCompatActivity() {
     webView.webViewClient = object : WebViewClient() {
       override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
         if (request.isForMainFrame) {
-          filterRuntime.preparePage(request.url.toString(), request.requestHeaders["Referer"])
+          filterRuntime.preparePage(request.url.toString())
         }
         return filterRuntime.maybeBlock(request)
       }
@@ -168,12 +170,12 @@ class MainActivity : AppCompatActivity() {
         if (url != null) {
           lifecycleScope.launch {
             withContext(Dispatchers.IO) {
-              filterRuntime.preparePage(url, null)
+              filterRuntime.preparePage(url)
             }
             if (view.url == url) {
               if (supportsDocumentStartScript) {
                 refreshCosmeticFilters(view)
-              } else { // DocumentStartScript 미지원 환경은 페이지 완료 후 스크립트 번들을 주입한다.
+              } else { // 미지원 환경은 페이지 완료 후 정적 자산 스크립트를 순서대로 주입한다.
                 injectWebViewScript(view)
               }
             }
@@ -300,7 +302,9 @@ class MainActivity : AppCompatActivity() {
   }
 
   private fun injectWebViewScript(view: WebView) {
-    view.evaluateJavascript(injectedScriptBundle, null)
+    documentStartScripts.forEach { script ->
+      view.evaluateJavascript(script, null)
+    }
   }
 
   private fun refreshCosmeticFilters(view: WebView) {
@@ -311,4 +315,6 @@ class MainActivity : AppCompatActivity() {
   private fun loadAssetText(assetName: String): String {
     return assets.open(assetName).bufferedReader().use { it.readText() }
   }
+
+  private fun loadAssetTexts(vararg assetNames: String): List<String> = assetNames.map(::loadAssetText)
 }

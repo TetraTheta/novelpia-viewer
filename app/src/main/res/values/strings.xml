@@ -14,7 +14,6 @@
   <string name="msg_clear_cookie">Cleared Cookie</string>
   <string name="msg_clear_cookie_warning">Every cookies will be deleted and you\'ll be logged out from Novelpia. Continue?</string>
   <string name="msg_clear_webstorage">Cleared WebStorage</string>
-  <string name="msg_filter_runtime_unsupported">This WebView version does not support the filter engine.</string>
   <string name="msg_filters_saved">Filter settings saved</string>
   <string name="msg_filters_update_failed">Failed to update filters</string>
   <string name="msg_filters_updated">Filters updated</string>

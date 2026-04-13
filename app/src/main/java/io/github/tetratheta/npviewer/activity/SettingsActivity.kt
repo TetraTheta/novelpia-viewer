@@ -94,7 +94,7 @@ class SettingsActivity : AppCompatActivity() {
       }
     }
 
-    // region 환경 설정 초기화
+    // region 프리퍼런스 설정
 
     private fun setupVersionPref() {
       findPreference<Preference>("current_version")?.summary =
@@ -410,7 +410,7 @@ class SettingsActivity : AppCompatActivity() {
 
     // endregion
 
-    // region 저장소 요약
+    // region 저장 용량 요약
 
     private suspend fun refreshStorageSummaries() {
       coroutineScope {

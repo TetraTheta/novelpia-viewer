@@ -12,8 +12,7 @@ data class FilterUpdateSummary(
 )
 
 data class RuleSetSnapshot(
-  val fingerprint: String,
-  val rules: List<String>
+  val fingerprint: String, val rules: List<String>
 )
 
 class FilterRepository(private val context: Context) {
@@ -27,8 +26,6 @@ class FilterRepository(private val context: Context) {
   fun getUserRules(): String = FilterPreferences.getUserRules(context)
 
   fun hasAnyActiveSource(): Boolean = getSubscriptionUrls().isNotEmpty() || getUserRules().isNotBlank()
-
-  fun loadRuleTexts(): List<String> = loadRuleSnapshot().rules
 
   @Synchronized
   fun loadRuleSnapshot(forceReload: Boolean = false): RuleSetSnapshot {
@@ -49,8 +46,7 @@ class FilterRepository(private val context: Context) {
     val userRules = getUserRules()
     if (userRules.isNotBlank()) rules += userRules
     val snapshot = RuleSetSnapshot(
-      fingerprint = rules.joinToString(separator = "\u0000") { it }.hashCode().toString(),
-      rules = rules
+      fingerprint = rules.joinToString(separator = "\u0000") { it }.hashCode().toString(), rules = rules
     )
     cachedStateKey = stateKey
     cachedSnapshot = snapshot
